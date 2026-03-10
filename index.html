@@ -552,11 +552,15 @@ function showPage(p) {
   document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(el=>{
-    if(el.textContent.toLowerCase().includes(p==='monitor'?'monitor':p==='analytics'?'analitika':'journal'))
-      el.classList.add('active');
+    const t = el.textContent.toLowerCase();
+    if(p==='monitor' && t.includes('monitor')) el.classList.add('active');
+    if(p==='analytics' && t.includes('analitika')) el.classList.add('active');
+    if(p==='edge' && t.includes('edge')) el.classList.add('active');
+    if(p==='journal' && t.includes('journal')) el.classList.add('active');
   });
   if(p==='analytics') loadAnalytics();
   if(p==='journal') renderJournalPage();
+  if(p==='edge') renderEdgePage();
 }
 
 // ══════════════════════════════════════════════════════════
@@ -670,7 +674,8 @@ function renderEventsLog() {
 // BYBIT API
 // ══════════════════════════════════════════════════════════
 async function bybitKlines(symbol, interval, limit, startTime) {
-  let url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=${limit}`;
+  const bybitUrl = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=${limit}`;
+  let url = `https://corsproxy.io/?${encodeURIComponent(bybitUrl)}`;
   if(startTime) url+=`&start=${startTime}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -684,7 +689,8 @@ async function bybitKlines(symbol, interval, limit, startTime) {
 
 async function fetchLivePrice(symbol) {
   try {
-    const r = await fetch(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`);
+    const tickerUrl = `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`;
+    const r = await fetch(`https://corsproxy.io/?${encodeURIComponent(tickerUrl)}`);
     const d = await r.json();
     if(d.retCode===0 && d.result.list.length) {
       const t = d.result.list[0];
@@ -1712,12 +1718,7 @@ function tick() {
 let lastEdgeData = null;
 let edgeAutoRefreshTimer = null;
 
-// ── showPage override to trigger edge render ──
-const _origShowPage = showPage;
-function showPage(p) {
-  _origShowPage(p);
-  if(p === 'edge') renderEdgePage();
-}
+// ── showPage edge trigger (handled in main showPage) ──
 
 async function renderEdgePage() {
   renderEdgeSnapshot();
@@ -2034,19 +2035,15 @@ Analiziraj sljedeće podatke i daj konkretan Daily Edge Report na HRVATSKOM jezi
 
 ## AKTIVNI FAIR VALUE GAPS (${ctx.activeFVGs.length} FVG-ova)
 ${ctx.activeFVGs.length ? ctx.activeFVGs.map((f,i)=>
-  `${i+1}. ${f.type.toUpperCase()} FVG | Zona: $${f.bottom}–$${f.top} | Mid: $${f.mid} | Veličina: ${f.size} | Udaljenost od cijene: ${f.distFromPrice} | Popunjenost: ${f.fillPct}`
-).join('
-') : 'Nema aktivnih FVG-ova na ovom timeframeu.'}
+  (i+1)+'. '+f.type.toUpperCase()+' FVG | Zona: $'+f.bottom+'-$'+f.top+' | Mid: $'+f.mid+' | Velicina: '+f.size+' | Udaljenost: '+f.distFromPrice+' | Popunjenost: '+f.fillPct
+).join('\n') : 'Nema aktivnih FVG-ova na ovom timeframeu.'}
 
 ## HISTORIJSKA SESSION STATISTIKA
 ${ctx.sessionStats ? Object.entries(ctx.sessionStats).map(([name, st])=>
-  `${name}: Danas (${ctx.dayOfWeek}) avg ${st.todayAvgChange}, bull% ${st.todayBullPct} (n=${st.todaySamples}) | Sveukupno avg ${st.overallAvgChange}, bull% ${st.overallBullPct}, range ${st.avgRange} (n=${st.totalSamples})`
-).join('
-') : 'Nema session statistike — učitaj Analitika stranicu.'}
+  name+': Danas ('+ctx.dayOfWeek+') avg '+st.todayAvgChange+', bull% '+st.todayBullPct+' (n='+st.todaySamples+') | Sveukupno avg '+st.overallAvgChange+', bull% '+st.overallBullPct+', range '+st.avgRange+' (n='+st.totalSamples+')'
+).join('\n') : 'Nema session statistike - ucitaj Analitika stranicu.'}
 
-${ctx.recentTrades ? `## ZADNJIH ${ctx.recentTrades.length} TRADOVA IZ JOURNALA
-${ctx.recentTrades.map(t=>`${t.date} | ${t.pair} ${t.direction} | ${t.session} | ${t.outcome} | P&L: $${t.pnl} | Setup: ${t.setup}`).join('
-')}` : ''}
+${ctx.recentTrades ? '## ZADNJIH '+ctx.recentTrades.length+' TRADOVA IZ JOURNALA\n'+ctx.recentTrades.map(t=>t.date+' | '+t.pair+' '+t.direction+' | '+t.session+' | '+t.outcome+' | PnL: $'+t.pnl+' | Setup: '+t.setup).join('\n') : ''}
 
 ## ZADATAK
 Napiši strukturirani Daily Edge Report koji KONKRETNO odgovara na:
@@ -2097,11 +2094,8 @@ function formatAIResponse(text) {
     .replace(/⚠️.+/g, m=>`<span class="warn">${m}</span>`)
     .replace(/disclaimer.*/gi, m=>`<div class="disclaimer">${m}</div>`)
     .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>
-?)+/g, m=>`<ul>${m}</ul>`)
-    .replace(/
-
-/g, '</p><p>')
+    .replace(/(<li>.*<\/li>[\n]?)+/g, m=>`<ul>${m}</ul>`)
+    .replace(/\n\n/g, '</p><p>')
     .replace(/^(?!<[hup]|<li|<div)(.+)$/gm, '<p>$1</p>')
     .replace(/<p><\/p>/g,'')
     .replace(/<p>(<h[0-9]>)/g,'$1')
